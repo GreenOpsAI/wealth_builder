@@ -14,11 +14,16 @@ SYMBOLS = {
     "Other":         ["EWT"],
 }
 
-EMA_FAST = 10
-EMA_SLOW = 20
+EMA_FAST             = 10
+EMA_SLOW             = 20
+ATR_PERIOD           = 14  # weeks for EWM ATR
+SLOPE_FAST_LOOKBACK  = 4   # iloc[-4]  = 3-week change on EMA10
+SLOPE_SLOW_LOOKBACK  = 7   # iloc[-7]  = 6-week change on EMA20
+COMPRESSION_LOOKBACK = 11  # iloc[-11] = 10-week gap comparison
 
 # ── Fetch + calculate ────────────────────────────────────────────────────────
 def get_trend(symbol: str) -> dict:
+    """Fetch weekly OHLCV for symbol and return trend metrics as a flat dict."""
     try:
         df = yf.download(symbol, period="max", interval="1wk",
                          progress=False, auto_adjust=True)
@@ -38,7 +43,7 @@ def get_trend(symbol: str) -> dict:
             (low  - prev_close).abs()
         ], axis=1).max(axis=1)
         atr_pct = round(
-            float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
+            float(tr.ewm(span=ATR_PERIOD, adjust=False).mean().iloc[-1])
             / float(close.iloc[-1]) * 100, 2
         )
 
@@ -69,13 +74,13 @@ def get_trend(symbol: str) -> dict:
         dist20 = round((price - e20) / e20 * 100, 1)
         dist20_str = f"{dist20:+.1f}%"
 
-        if len(ema10) >= 4:
-            slope10 = (float(ema10.iloc[-1]) - float(ema10.iloc[-4])) / float(ema10.iloc[-4]) * 100
+        if len(ema10) >= SLOPE_FAST_LOOKBACK:
+            slope10 = (float(ema10.iloc[-1]) - float(ema10.iloc[-SLOPE_FAST_LOOKBACK])) / float(ema10.iloc[-SLOPE_FAST_LOOKBACK]) * 100
         else:
             slope10 = 0.0
 
-        if len(ema20) >= 7:
-            slope20 = (float(ema20.iloc[-1]) - float(ema20.iloc[-7])) / float(ema20.iloc[-7]) * 100
+        if len(ema20) >= SLOPE_SLOW_LOOKBACK:
+            slope20 = (float(ema20.iloc[-1]) - float(ema20.iloc[-SLOPE_SLOW_LOOKBACK])) / float(ema20.iloc[-SLOPE_SLOW_LOOKBACK]) * 100
         else:
             slope20 = 0.0
 
@@ -94,9 +99,9 @@ def get_trend(symbol: str) -> dict:
             else:
                 strength = "Weak"
 
-        if len(ema10) >= 11 and len(ema20) >= 11:
-            gap_now  = abs(float(ema10.iloc[-1])  - float(ema20.iloc[-1]))
-            gap_10wk = abs(float(ema10.iloc[-11]) - float(ema20.iloc[-11]))
+        if len(ema10) >= COMPRESSION_LOOKBACK and len(ema20) >= COMPRESSION_LOOKBACK:
+            gap_now  = abs(float(ema10.iloc[-1])                    - float(ema20.iloc[-1]))
+            gap_10wk = abs(float(ema10.iloc[-COMPRESSION_LOOKBACK]) - float(ema20.iloc[-COMPRESSION_LOOKBACK]))
             compression = "Expanding" if gap_now > gap_10wk else "Contracting"
         else:
             compression = "Contracting"
@@ -122,6 +127,7 @@ def get_trend(symbol: str) -> dict:
 console = Console()
 
 def make_table(group: str, rows: list[dict]) -> Table:
+    """Build and return a rich Table for one symbol group using pre-computed row dicts."""
     table = Table(
         title=f"[bold]{group}[/bold]",
         box=box.SIMPLE_HEAD,
