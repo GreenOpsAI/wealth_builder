@@ -66,15 +66,53 @@ def get_trend(symbol: str) -> dict:
         performance = round((price - trend_start_price) / trend_start_price * 100, 1)
         perf_str = f"{performance:+.1f}%"
 
+        dist20 = round((price - e20) / e20 * 100, 1)
+        dist20_str = f"{dist20:+.1f}%"
+
+        if len(ema10) >= 4:
+            slope10 = (float(ema10.iloc[-1]) - float(ema10.iloc[-4])) / float(ema10.iloc[-4]) * 100
+        else:
+            slope10 = 0.0
+
+        if len(ema20) >= 7:
+            slope20 = (float(ema20.iloc[-1]) - float(ema20.iloc[-7])) / float(ema20.iloc[-7]) * 100
+        else:
+            slope20 = 0.0
+
+        if current_state:  # Up trend
+            if slope10 > 0 and slope20 > 0:
+                strength = "Strong"
+            elif slope10 > 0 or slope20 > 0:
+                strength = "Mixed"
+            else:
+                strength = "Weak"
+        else:  # Down trend
+            if slope10 < 0 and slope20 < 0:
+                strength = "Strong"
+            elif slope10 < 0 or slope20 < 0:
+                strength = "Mixed"
+            else:
+                strength = "Weak"
+
+        if len(ema10) >= 11 and len(ema20) >= 11:
+            gap_now  = abs(float(ema10.iloc[-1])  - float(ema20.iloc[-1]))
+            gap_10wk = abs(float(ema10.iloc[-11]) - float(ema20.iloc[-11]))
+            compression = "Expanding" if gap_now > gap_10wk else "Contracting"
+        else:
+            compression = "Contracting"
+
         return {
-            "symbol":  symbol,
-            "price":   round(price, 2),
-            "ema10":   round(e10,   2),
-            "ema20":   round(e20,   2),
+            "symbol":      symbol,
+            "price":       round(price, 2),
+            "ema10":       round(e10,   2),
+            "ema20":       round(e20,   2),
             "trend":       trend,
+            "strength":    strength,
             "age":         age_str,
             "atr_pct":     atr_pct,
             "performance": perf_str,
+            "compression": compression,
+            "dist20":      dist20_str,
             "error":       None,
         }
     except Exception as ex:
@@ -98,12 +136,15 @@ def make_table(group: str, rows: list[dict]) -> Table:
     table.add_column("EMA10",     justify="right", min_width=9)
     table.add_column("EMA20",     justify="right", min_width=9)
     table.add_column("Trend",     justify="right", min_width=9)
+    table.add_column("Strength",  justify="right", min_width=8)
     table.add_column("Age (wks)", justify="right", min_width=6)
-    table.add_column("Perf%",     justify="right", min_width=6)
+    table.add_column("Perf%",       justify="right", min_width=6)
+    table.add_column("Compression", justify="right", min_width=12)
+    table.add_column("Dist20%",     justify="right", min_width=8)
 
     for r in rows:
         if r.get("error"):
-            table.add_row(r["symbol"], "", "", "", "", "", Text(f"error: {r['error']}", style="dim"), "")
+            table.add_row(r["symbol"], "", "", "", "", "", Text(f"error: {r['error']}", style="dim"), "", "", "", "")
         else:
             if r["trend"] == "Up":
                 trend_cell = Text("▲ Up",   style="bold green")
@@ -117,8 +158,11 @@ def make_table(group: str, rows: list[dict]) -> Table:
                 f"{r['ema10']:,.2f}",
                 f"{r['ema20']:,.2f}",
                 trend_cell,
+                r["strength"],
                 r["age"],
                 r["performance"],
+                r["compression"],
+                r["dist20"],
             )
     return table
 
